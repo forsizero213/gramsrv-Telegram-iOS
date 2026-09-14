@@ -76,7 +76,7 @@ jobs:
           echo "BUILD_NUMBER=$(echo $BUILD_NUMBER)" >> $GITHUB_ENV
           echo "APP_VERSION=$(echo $APP_VERSION)" >> $GITHUB_ENV
 
-          # 1. Override ImportCertificates.py entirely so any verification returns True directly
+          # Bypass certificate checks completely
           cat << 'EOF' > build-system/Make/ImportCertificates.py
           def verify_certificates(*args, **kwargs):
               return True
@@ -85,21 +85,13 @@ jobs:
               return True
           EOF
 
-          # 2. Patch Make.py to force disableProvisioningProfiles flag in Bazel
-          python3 -c '
-          path = "build-system/Make/Make.py"
-          with open(path, "r") as f:
-              code = f.read()
-          code = code.replace("args.bazelArguments", "[\"--define=disableProvisioningProfiles=true\"] + args.bazelArguments")
-          with open(path, "w") as f:
-              f.write(code)
-          '
-
-          # 3. Execute build without codesigning directory
+          # Build using fake-codesigning folder and --disableProvisioningProfiles flag
           python3 -u build-system/Make/Make.py \
             --bazelUserRoot="$BAZEL_USER_ROOT" \
             build \
             --configurationPath="build-system/appstore-configuration.json" \
+            --codesigningInformationPath="build-system/fake-codesigning" \
+            --disableProvisioningProfiles \
             --configuration=release_arm64 \
             --buildNumber="$BUILD_NUMBER"
 
