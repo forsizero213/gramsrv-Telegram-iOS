@@ -43,10 +43,10 @@ jobs:
           cd /Users/Shared/telegram-ios
           cat << 'EOF' > build-system/appstore-configuration.json
           {
-            "bundle_id": "org.hui.Telegram",
+            "bundle_id": "app.capricorn1136.rose5722",
             "api_id": "34064276",
             "api_hash": "79d1eeba6d4521f29a81dc40db4ec79a",
-            "team_id": "0000000000",
+            "team_id": "Z72UR7V57D",
             "app_center_id": "0",
             "is_internal_build": "false",
             "is_appstore_build": "true",
