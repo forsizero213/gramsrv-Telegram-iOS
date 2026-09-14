@@ -92,19 +92,11 @@ jobs:
           print("Patched BuildConfiguration.py successfully")
           PYEOF
 
-      - name: Debug - locate second aps-environment error string
+      - name: Debug - inspect Make.py aps-environment check
         run: |
           set -x
           cd /Users/Shared/telegram-ios
-          echo "=== searching for exact error string ==="
-          grep -rn "Could not find a valid" . \
-            --include="*.py" --include="*.bzl" --include="BUILD" --include="*.swift" 2>/dev/null
-
-          echo "=== confirm our patch actually landed ==="
-          grep -n -B2 -A2 "aps-environment' not in profile_dict" build-system/Make/BuildConfiguration.py
-
-          echo "=== full function context around aps_environment lookup ==="
-          grep -n "def.*aps" build-system/Make/BuildConfiguration.py
+          sed -n '495,530p' build-system/Make/Make.py
 
       - name: Build the App for KSign
         run: |
@@ -117,53 +109,4 @@ jobs:
 
           BUILD_NUMBER_OFFSET="$(cat build_number_offset)"
 
-          export APP_VERSION=$(cat versions.json | python3 -c 'import json,sys;obj=json.load(sys.stdin);print(obj["app"]);')
-          export COMMIT_COUNT=$(git rev-list --count HEAD)
-          export COMMIT_COUNT="$(($COMMIT_COUNT+$BUILD_NUMBER_OFFSET))"
-          export BUILD_NUMBER="$COMMIT_COUNT"
-          echo "BUILD_NUMBER=$(echo $BUILD_NUMBER)" >> $GITHUB_ENV
-          echo "APP_VERSION=$(echo $APP_VERSION)" >> $GITHUB_ENV
-
-          python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
-
-          # Вызов сборки с базовой папкой build-system/fake-codesigning из исходников
-          python3 -u build-system/Make/Make.py \
-            --bazelUserRoot="$BAZEL_USER_ROOT" \
-            build \
-            --configurationPath="build-system/appstore-configuration.json" \
-            --codesigningInformationPath="build-system/fake-codesigning" \
-            --configuration=release_arm64 \
-            --buildNumber="$BUILD_NUMBER"
-
-          OUTPUT_PATH="build/artifacts"
-          rm -rf "$OUTPUT_PATH"
-          mkdir -p "$OUTPUT_PATH"
-
-          if [ -f "bazel-bin/Telegram/Telegram.ipa" ]; then
-            cp "bazel-bin/Telegram/Telegram.ipa" "$OUTPUT_PATH/"
-          else
-            cp bazel-out/applebin_ios-ios_arm*-opt-ST-*/bin/Telegram/Telegram.ipa "$OUTPUT_PATH/"
-          fi
-
-          mkdir -p build/DSYMs
-          if [ -d "bazel-bin/Telegram/Telegram.app.dSYM" ]; then
-            cp -R bazel-bin/Telegram/*.dSYM build/DSYMs/ 2>/dev/null || true
-          else
-            cp -R bazel-out/applebin_ios-ios_arm*-opt-ST-*/bin/Telegram/*.dSYM build/DSYMs/ 2>/dev/null || true
-          fi
-          zip -r "./$OUTPUT_PATH/Telegram.DSYMs.zip" build/DSYMs 1>/dev/null
-
-      - name: Create Release and Upload Assets
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: build-${{ env.BUILD_NUMBER }}
-          name: Telegram ${{ env.APP_VERSION }} (${{ env.BUILD_NUMBER }}) - KSign Ready
-          body: |
-            Build of Telegram for iOS ${{ env.APP_VERSION }} (${{ env.BUILD_NUMBER }}) optimized for KSign.
-          draft: false
-          prerelease: false
-          files: |
-            /Users/Shared/telegram-ios/build/artifacts/Telegram.ipa
-            /Users/Shared/telegram-ios/build/artifacts/Telegram.DSYMs.zip
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          export APP_VERSION=$(cat versions.json | python3 -c 'import json,sys;obj=json.load(sys.stdin);print(ob
