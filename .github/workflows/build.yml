@@ -38,6 +38,21 @@ jobs:
           cp -R $GITHUB_WORKSPACE /Users/Shared/
           mv /Users/Shared/$(basename $GITHUB_WORKSPACE) /Users/Shared/telegram-ios
 
+      - name: Strip aps-environment for fake codesigning
+        run: |
+          set -x
+          SOURCE_DIR=/Users/Shared/telegram-ios
+          # Fake-codesigning profiles have no Push Notifications capability,
+          # so any entitlements requesting aps-environment must be stripped
+          # before Bazel signs the app, or codesign fails with:
+          # "Could not find a valid aps-environment entitlement..."
+          find "$SOURCE_DIR" -name "*.entitlements" | while read -r f; do
+            if /usr/libexec/PlistBuddy -c "Print :aps-environment" "$f" >/dev/null 2>&1; then
+              echo "Removing aps-environment from $f"
+              /usr/libexec/PlistBuddy -c "Delete :aps-environment" "$f"
+            fi
+          done
+
       - name: Setup Minimal Configuration
         run: |
           cd /Users/Shared/telegram-ios
