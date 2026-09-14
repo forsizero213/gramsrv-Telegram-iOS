@@ -1,0 +1,69 @@
+name: Debug Codesigning Investigation
+
+on:
+  workflow_dispatch:
+
+jobs:
+  debug:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+          fetch-depth: '0'
+
+      - name: Set active Xcode path
+        run: |
+          XCODE_VERSION=$(cat versions.json | python3 -c 'import json,sys;obj=json.load(sys.stdin);print(obj["xcode"]);')
+          sudo xcode-select -s /Applications/Xcode_$XCODE_VERSION.app/Contents/Developer
+
+      - name: Create canonical source directory
+        run: |
+          set -x
+          sudo mkdir -p /Users/Shared
+          cp -R $GITHUB_WORKSPACE /Users/Shared/
+          mv /Users/Shared/$(basename $GITHUB_WORKSPACE) /Users/Shared/telegram-ios
+
+      - name: Inspect all resolve_aps_environment methods and dispatch logic
+        run: |
+          set -x
+          cd /Users/Shared/telegram-ios
+
+          echo "############################################"
+          echo "=== method at line 242 ==="
+          echo "############################################"
+          sed -n '235,260p' build-system/Make/BuildConfiguration.py
+
+          echo "############################################"
+          echo "=== method at line 282 ==="
+          echo "############################################"
+          sed -n '275,300p' build-system/Make/BuildConfiguration.py
+
+          echo "############################################"
+          echo "=== method at line 314 ==="
+          echo "############################################"
+          sed -n '307,330p' build-system/Make/BuildConfiguration.py
+
+          echo "############################################"
+          echo "=== method at line 334 ==="
+          echo "############################################"
+          sed -n '327,350p' build-system/Make/BuildConfiguration.py
+
+          echo "############################################"
+          echo "=== resolve_codesigning function (dispatch logic) ==="
+          echo "############################################"
+          grep -n "def resolve_codesigning" build-system/Make/Make.py build-system/Make/BuildConfiguration.py
+
+          echo "############################################"
+          echo "=== class definitions containing resolve_aps_environment (to identify which is which) ==="
+          echo "############################################"
+          grep -n "^class " build-system/Make/BuildConfiguration.py
+
+          echo "############################################"
+          echo "=== full resolve_codesigning body, wherever it lives ==="
+          echo "############################################"
+          RESOLVE_FILE=$(grep -l "def resolve_codesigning" build-system/Make/Make.py build-system/Make/BuildConfiguration.py | head -1)
+          echo "Found in: $RESOLVE_FILE"
+          LINE=$(grep -n "def resolve_codesigning" "$RESOLVE_FILE" | head -1 | cut -d: -f1)
+          sed -n "${LINE},$((LINE+60))p" "$RESOLVE_FILE"
