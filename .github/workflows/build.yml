@@ -58,45 +58,54 @@ jobs:
           }
           EOF
 
-      - name: Patch BuildConfiguration.py to not require aps-environment
+      - name: Patch Make.py to not fail hard when aps-environment can't be resolved
         run: |
           set -x
           cd /Users/Shared/telegram-ios
           python3 - << 'PYEOF'
-          path = "build-system/Make/BuildConfiguration.py"
+          path = "build-system/Make/Make.py"
           with open(path) as f:
               lines = f.readlines()
 
           target_idx = None
           for i, line in enumerate(lines):
-              if "aps-environment' not in profile_dict['Entitlements']" in line:
+              if "codesigning_data.aps_environment is None:" in line:
                   target_idx = i
                   break
 
           if target_idx is None:
-              raise SystemExit("Could not find aps-environment check line - source may have changed")
+              raise SystemExit("Could not find 'codesigning_data.aps_environment is None' check - source may have changed")
 
-          patched = False
+          # find the sys.exit(1) within the next few lines and replace the
+          # print+exit block with a non-fatal fallback that rebuilds
+          # codesigning_data with an empty aps_environment, matching the
+          # same pattern XcodeManagedCodesigningSource already uses.
+          exit_idx = None
           for j in range(target_idx, min(target_idx + 5, len(lines))):
               if "sys.exit(1)" in lines[j]:
-                  indent = lines[j][:len(lines[j]) - len(lines[j].lstrip())]
-                  lines[j] = indent + "return \"\"\n"
-                  patched = True
+                  exit_idx = j
                   break
 
-          if not patched:
-              raise SystemExit("Could not find sys.exit(1) near the aps-environment check - source may have changed")
+          if exit_idx is None:
+              raise SystemExit("Could not find sys.exit(1) near the aps_environment check - source may have changed")
+
+          indent = lines[target_idx][:len(lines[target_idx]) - len(lines[target_idx].lstrip())]
+          body_indent = lines[exit_idx][:len(lines[exit_idx]) - len(lines[exit_idx].lstrip())]
+
+          print_idx = exit_idx - 1  # the print(...) line right before sys.exit(1)
+          new_print = body_indent + "print('Could not resolve aps-environment from provisioning profiles, continuing without push')\n"
+          new_reassign = body_indent + "codesigning_data = ResolvedCodesigningData(aps_environment=\"\", use_xcode_managed_codesigning=codesigning_data.use_xcode_managed_codesigning)\n"
+
+          lines[print_idx] = new_print
+          lines[exit_idx] = new_reassign
 
           with open(path, "w") as f:
               f.writelines(lines)
-          print("Patched BuildConfiguration.py successfully")
+          print("Patched Make.py successfully")
           PYEOF
 
-      - name: Debug - inspect Make.py aps-environment check
-        run: |
-          set -x
-          cd /Users/Shared/telegram-ios
-          sed -n '495,530p' build-system/Make/Make.py
+          echo "=== verifying patch ==="
+          grep -n -B2 -A2 "codesigning_data.aps_environment is None" build-system/Make/Make.py
 
       - name: Build the App for KSign
         run: |
@@ -109,4 +118,53 @@ jobs:
 
           BUILD_NUMBER_OFFSET="$(cat build_number_offset)"
 
-          export APP_VERSION=$(cat versions.json | python3 -c 'import json,sys;obj=json.load(sys.stdin);print(ob
+          export APP_VERSION=$(cat versions.json | python3 -c 'import json,sys;obj=json.load(sys.stdin);print(obj["app"]);')
+          export COMMIT_COUNT=$(git rev-list --count HEAD)
+          export COMMIT_COUNT="$(($COMMIT_COUNT+$BUILD_NUMBER_OFFSET))"
+          export BUILD_NUMBER="$COMMIT_COUNT"
+          echo "BUILD_NUMBER=$(echo $BUILD_NUMBER)" >> $GITHUB_ENV
+          echo "APP_VERSION=$(echo $APP_VERSION)" >> $GITHUB_ENV
+
+          python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
+
+          # Вызов сборки с базовой папкой build-system/fake-codesigning из исходников
+          python3 -u build-system/Make/Make.py \
+            --bazelUserRoot="$BAZEL_USER_ROOT" \
+            build \
+            --configurationPath="build-system/appstore-configuration.json" \
+            --codesigningInformationPath="build-system/fake-codesigning" \
+            --configuration=release_arm64 \
+            --buildNumber="$BUILD_NUMBER"
+
+          OUTPUT_PATH="build/artifacts"
+          rm -rf "$OUTPUT_PATH"
+          mkdir -p "$OUTPUT_PATH"
+
+          if [ -f "bazel-bin/Telegram/Telegram.ipa" ]; then
+            cp "bazel-bin/Telegram/Telegram.ipa" "$OUTPUT_PATH/"
+          else
+            cp bazel-out/applebin_ios-ios_arm*-opt-ST-*/bin/Telegram/Telegram.ipa "$OUTPUT_PATH/"
+          fi
+
+          mkdir -p build/DSYMs
+          if [ -d "bazel-bin/Telegram/Telegram.app.dSYM" ]; then
+            cp -R bazel-bin/Telegram/*.dSYM build/DSYMs/ 2>/dev/null || true
+          else
+            cp -R bazel-out/applebin_ios-ios_arm*-opt-ST-*/bin/Telegram/*.dSYM build/DSYMs/ 2>/dev/null || true
+          fi
+          zip -r "./$OUTPUT_PATH/Telegram.DSYMs.zip" build/DSYMs 1>/dev/null
+
+      - name: Create Release and Upload Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ env.BUILD_NUMBER }}
+          name: Telegram ${{ env.APP_VERSION }} (${{ env.BUILD_NUMBER }}) - KSign Ready
+          body: |
+            Build of Telegram for iOS ${{ env.APP_VERSION }} (${{ env.BUILD_NUMBER }}) optimized for KSign.
+          draft: false
+          prerelease: false
+          files: |
+            /Users/Shared/telegram-ios/build/artifacts/Telegram.ipa
+            /Users/Shared/telegram-ios/build/artifacts/Telegram.DSYMs.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
