@@ -58,6 +58,18 @@ jobs:
           }
           EOF
 
+      - name: Configure Fake Codesigning Directory
+        run: |
+          cd /Users/Shared/telegram-ios
+          mkdir -p build-system/fake-codesigning
+          cat << 'EOF' > build-system/fake-codesigning/build_configuration.json
+          {
+            "codesigning_information": {
+              "is_provisioning_profile_optional": true
+            }
+          }
+          EOF
+
       - name: Build the App for KSign
         run: |
           set -x
@@ -76,13 +88,12 @@ jobs:
           echo "BUILD_NUMBER=$(echo $BUILD_NUMBER)" >> $GITHUB_ENV
           echo "APP_VERSION=$(echo $APP_VERSION)" >> $GITHUB_ENV
 
-          # Direct clean build using Telegram's default options
+          # Вызов Make.py только со стандартными параметрами сборки
           python3 -u build-system/Make/Make.py \
             --bazelUserRoot="$BAZEL_USER_ROOT" \
             build \
             --configurationPath="build-system/appstore-configuration.json" \
             --codesigningInformationPath="build-system/fake-codesigning" \
-            --isProvisioningProfileOptional \
             --configuration=release_arm64 \
             --buildNumber="$BUILD_NUMBER"
 
