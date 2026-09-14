@@ -57,6 +57,24 @@ jobs:
             "enable_icloud": false
           }
           EOF
+      - name: Patch aps-environment check
+        run: |
+          cd /Users/Shared/telegram-ios
+          python3 - <<'PYEOF'
+          path = "build-system/Make/BuildConfiguration.py"
+          with open(path) as f:
+              content = f.read()
+          old = """                if 'aps-environment' not in profile_dict['Entitlements']:
+                    print('Provisioning profile at {} does not include an aps-environment entitlement'.format(file_path))
+                    sys.exit(1)"""
+          new = """                if 'aps-environment' not in profile_dict['Entitlements']:
+                    print('Warning: provisioning profile at {} lacks aps-environment, defaulting to development'.format(file_path))
+                    return 'development'"""
+          assert old in content, "pattern not found — file may have changed upstream"
+          content = content.replace(old, new)
+          with open(path, "w") as f:
+              f.write(content)
+          PYEOF
 
       - name: Build the App for KSign
         env:
