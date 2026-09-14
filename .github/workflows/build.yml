@@ -1,11 +1,10 @@
-name: CI
+name: Build Telegram for KSign
 
 on:
   push:
     branches: [ master ]
   workflow_dispatch:
 
-# Fixes release permissions ("Resource not accessible by integration")
 permissions:
   contents: write
 
@@ -24,7 +23,6 @@ jobs:
           XCODE_VERSION=$(cat versions.json | python3 -c 'import json,sys;obj=json.load(sys.stdin);print(obj["xcode"]);')
           sudo xcode-select -s /Applications/Xcode_$XCODE_VERSION.app/Contents/Developer
 
-      # Caches Bazel build objects to reduce build time on subsequent runs
       - name: Cache Bazel Build Directory
         uses: actions/cache@v4
         with:
@@ -40,7 +38,27 @@ jobs:
           cp -R $GITHUB_WORKSPACE /Users/Shared/
           mv /Users/Shared/$(basename $GITHUB_WORKSPACE) /Users/Shared/telegram-ios
 
-      - name: Build the App
+      - name: Setup App Store Configuration for Sideloading
+        run: |
+          cd /Users/Shared/telegram-ios
+          cat << 'EOF' > build-system/appstore-configuration.json
+          {
+            "bundle_id": "org.hui.Telegram",
+            "api_id": "34064276",
+            "api_hash": "79d1eeba6d4521f29a81dc40db4ec79a",
+            "team_id": "0000000000",
+            "app_center_id": "0",
+            "is_internal_build": "false",
+            "is_appstore_build": "true",
+            "appstore_id": "0",
+            "app_specific_url_scheme": "tg",
+            "premium_iap_product_id": "",
+            "enable_siri": false,
+            "enable_icloud": false
+          }
+          EOF
+
+      - name: Build the App for KSign
         run: |
           set -x
 
@@ -58,16 +76,15 @@ jobs:
           echo "BUILD_NUMBER=$(echo $BUILD_NUMBER)" >> $GITHUB_ENV
           echo "APP_VERSION=$(echo $APP_VERSION)" >> $GITHUB_ENV
 
-          python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
+          # Standard release build using custom appstore config without fake-codesigning
           python3 -u build-system/Make/Make.py \
             --bazelUserRoot="$BAZEL_USER_ROOT" \
             build \
             --configurationPath="build-system/appstore-configuration.json" \
-            --codesigningInformationPath=build-system/fake-codesigning \
             --configuration=release_arm64 \
             --buildNumber="$BUILD_NUMBER"
 
-          # Fixes missing file error by checking bazel-bin
+          # Collect output IPA safely from bazel-bin
           OUTPUT_PATH="build/artifacts"
           rm -rf "$OUTPUT_PATH"
           mkdir -p "$OUTPUT_PATH"
@@ -78,6 +95,7 @@ jobs:
             cp bazel-out/applebin_ios-ios_arm*-opt-ST-*/bin/Telegram/Telegram.ipa "$OUTPUT_PATH/"
           fi
 
+          # Collect dSYMs safely
           mkdir -p build/DSYMs
           if [ -d "bazel-bin/Telegram/Telegram.app.dSYM" ]; then
             cp -R bazel-bin/Telegram/*.dSYM build/DSYMs/ 2>/dev/null || true
@@ -86,14 +104,13 @@ jobs:
           fi
           zip -r "./$OUTPUT_PATH/Telegram.DSYMs.zip" build/DSYMs 1>/dev/null
 
-      # Modern release action compatible with Node 20/24
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ env.BUILD_NUMBER }}
-          name: Telegram ${{ env.APP_VERSION }} (${{ env.BUILD_NUMBER }})
+          name: Telegram ${{ env.APP_VERSION }} (${{ env.BUILD_NUMBER }}) - KSign Ready
           body: |
-            An unsigned build of Telegram for iOS ${{ env.APP_VERSION }} (${{ env.BUILD_NUMBER }})
+            Build of Telegram for iOS ${{ env.APP_VERSION }} (${{ env.BUILD_NUMBER }}) optimized for KSign.
           draft: false
           prerelease: false
           files: |
