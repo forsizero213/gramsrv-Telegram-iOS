@@ -64,30 +64,36 @@ jobs:
           cd /Users/Shared/telegram-ios
           python3 - << 'PYEOF'
           path = "build-system/Make/BuildConfiguration.py"
-          with open(path, "r") as f:
-              content = f.read()
+          with open(path) as f:
+              lines = f.readlines()
 
-          old = """                    if 'aps-environment' not in profile_dict['Entitlements']:
-                        print('Provisioning profile at {} does not include an aps-environment entitlement'.format(file_path))
-                        sys.exit(1)
-                    return profile_dict['Entitlements']['aps-environment']"""
+          target_idx = None
+          for i, line in enumerate(lines):
+              if "aps-environment' not in profile_dict['Entitlements']" in line:
+                  target_idx = i
+                  break
 
-          new = """                    if 'aps-environment' not in profile_dict['Entitlements']:
-                        print('Provisioning profile at {} does not include an aps-environment entitlement, continuing without push'.format(file_path))
-                        return ""
-                    return profile_dict['Entitlements']['aps-environment']"""
+          if target_idx is None:
+              raise SystemExit("Could not find aps-environment check line - source may have changed")
 
-          if old not in content:
-              raise SystemExit("Anchor block not found in BuildConfiguration.py - source may have changed, aborting patch")
+          patched = False
+          for j in range(target_idx, min(target_idx + 5, len(lines))):
+              if "sys.exit(1)" in lines[j]:
+                  indent = lines[j][:len(lines[j]) - len(lines[j].lstrip())]
+                  lines[j] = indent + "return \"\"\n"
+                  patched = True
+                  break
 
-          content = content.replace(old, new)
+          if not patched:
+              raise SystemExit("Could not find sys.exit(1) near the aps-environment check - source may have changed")
+
           with open(path, "w") as f:
-              f.write(content)
+              f.writelines(lines)
           print("Patched BuildConfiguration.py successfully")
           PYEOF
 
           echo "=== verifying patch ==="
-          grep -n -A3 "aps-environment' not in profile_dict" build-system/Make/BuildConfiguration.py
+          grep -n -B2 -A2 "aps-environment' not in profile_dict" build-system/Make/BuildConfiguration.py
 
       - name: Build the App for KSign
         run: |
