@@ -1,3 +1,4 @@
+
 #import <MtProtoKit/MTDatacenterAuthMessageService.h>
 
 #import <MtProtoKit/MTLogging.h>
@@ -42,6 +43,35 @@
 }
 
 @end
+static NSDictionary *selectPublicKey(NSArray *fingerprints) {
+    static NSArray *serverPublicKeys = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        NSString *gramsrvKey = @"-----BEGIN RSA PUBLIC KEY-----\n"
+            "MIIBCgKCAQEAwRBimRGOEEa2sy1/gWi6NghKeiDdORt18eoDHiKD1HvJqqkzSiOG\n"
+            "+FvbI+fRFy7FbOhoUlZyYVXuJMCuAlse20sW9j6SMPudjJwghFosXBK9aB4FVtII\n"
+            "ZfljcKhlE8aqyC79BX68vDwziKJvMaJKCawurGSmEvjjc0R6wlqNGZmFbo1+B1zV\n"
+            "mHR6Ji+PX1ArCDUl870Q8Uk4RtAl+xO4qm6Jv/9694RbJw/Kb3/R0nc4vYN4+oUq\n"
+            "ikgXFyDw7ZLg10fbV6pwV8Grw2P8DI4rLE2lMQ6J0CXAl/3GdI0izHf6RMVc18LX\n"
+            "RWrn7yD2r+2O3x8LqpBYcpQ3L76s6qDsdQIDAQAB\n"
+            "-----END RSA PUBLIC KEY-----";
+
+        uint64_t gramsrvFingerprint = MTRsaFingerprint(gramsrvKey); // use the existing fingerprint function
+
+        serverPublicKeys = @[
+            @{ @"key": gramsrvKey, @"fingerprint": @(gramsrvFingerprint) }
+        ];
+    });
+
+    for (NSDictionary *dict in serverPublicKeys) {
+        NSNumber *fingerprint = dict[@"fingerprint"];
+        if ([fingerprints containsObject:fingerprint]) {
+            return dict;
+        }
+    }
+
+    return nil;
+}
 
 static NSArray<MTDatacenterAuthPublicKey *> *defaultPublicKeys(bool isProduction) {
     static NSArray<MTDatacenterAuthPublicKey *> *testingPublicKeys = nil;
