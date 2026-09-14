@@ -38,7 +38,7 @@ jobs:
           cp -R $GITHUB_WORKSPACE /Users/Shared/
           mv /Users/Shared/$(basename $GITHUB_WORKSPACE) /Users/Shared/telegram-ios
 
-      - name: Setup App Store Configuration for Sideloading
+      - name: Setup Minimal Configuration
         run: |
           cd /Users/Shared/telegram-ios
           cat << 'EOF' > build-system/appstore-configuration.json
@@ -55,18 +55,6 @@ jobs:
             "premium_iap_product_id": "",
             "enable_siri": false,
             "enable_icloud": false
-          }
-          EOF
-
-      - name: Configure Fake Codesigning Directory
-        run: |
-          cd /Users/Shared/telegram-ios
-          mkdir -p build-system/fake-codesigning
-          cat << 'EOF' > build-system/fake-codesigning/build_configuration.json
-          {
-            "codesigning_information": {
-              "is_provisioning_profile_optional": true
-            }
           }
           EOF
 
@@ -88,7 +76,7 @@ jobs:
           echo "BUILD_NUMBER=$(echo $BUILD_NUMBER)" >> $GITHUB_ENV
           echo "APP_VERSION=$(echo $APP_VERSION)" >> $GITHUB_ENV
 
-          # Вызов Make.py только со стандартными параметрами сборки
+          # Вызов сборки с базовой папкой build-system/fake-codesigning из исходников
           python3 -u build-system/Make/Make.py \
             --bazelUserRoot="$BAZEL_USER_ROOT" \
             build \
