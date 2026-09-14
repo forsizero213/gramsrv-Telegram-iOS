@@ -58,19 +58,16 @@ jobs:
           }
           EOF
 
-      - name: Debug - locate aps-environment source
+      - name: Debug - inspect aps-environment references
         run: |
           set -x
           cd /Users/Shared/telegram-ios
 
-          echo "=== fake-codesigning folder layout ==="
-          find build-system/fake-codesigning -maxdepth 4
+          echo "=== context in BuildConfiguration.py ==="
+          grep -n -B5 -A5 "aps-environment" build-system/Make/BuildConfiguration.py
 
-          echo "=== files mentioning aps-environment ==="
-          grep -rl "aps-environment" . --include="*.json" --include="*.entitlements" --include="*.plist" --include="*.py" --include="*.bzl" --include="BUILD" 2>/dev/null || echo "no matches found"
-
-          echo "=== Make.py build --help output ==="
-          python3 build-system/Make/Make.py build --help || true
+          echo "=== context in Telegram/BUILD ==="
+          grep -n -B5 -A5 "aps-environment" Telegram/BUILD
 
       - name: Build the App for KSign
         run: |
