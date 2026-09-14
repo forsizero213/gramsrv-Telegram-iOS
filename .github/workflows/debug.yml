@@ -26,6 +26,8 @@ jobs:
           cd /Users/Shared/telegram-ios
           for f in build-system/fake-codesigning/profiles/*.mobileprovision; do
             echo "=== $f ==="
-            security cms -D -i "$f" | /usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" /dev/stdin 2>/dev/null || echo "(could not read application-identifier)"
-            security cms -D -i "$f" | /usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" /dev/stdin 2>/dev/null || echo "(could not read TeamIdentifier)"
+            security cms -D -i "$f" > /tmp/decoded.plist 2>/dev/null
+            /usr/libexec/PlistBuddy -c "Print :Entitlements:application-identifier" /tmp/decoded.plist 2>/dev/null || echo "(could not read application-identifier)"
+            /usr/libexec/PlistBuddy -c "Print :TeamIdentifier:0" /tmp/decoded.plist 2>/dev/null || echo "(could not read TeamIdentifier)"
+            rm -f /tmp/decoded.plist
           done
