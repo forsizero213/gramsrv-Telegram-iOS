@@ -58,6 +58,7 @@ jobs:
           }
           EOF
 
+
       - name: Build the App for KSign
         run: |
           set -x
@@ -76,15 +77,17 @@ jobs:
           echo "BUILD_NUMBER=$(echo $BUILD_NUMBER)" >> $GITHUB_ENV
           echo "APP_VERSION=$(echo $APP_VERSION)" >> $GITHUB_ENV
 
-          # Prepare fake codesigning environment (required by Make.py parser)
+          # Initialize dummy certificate environment
           python3 build-system/Make/ImportCertificates.py --path build-system/fake-codesigning/certs
 
-          # Standard release build using custom appstore config
+          # Build without profile/extension entitlement checks to allow custom sideload signing
           python3 -u build-system/Make/Make.py \
             --bazelUserRoot="$BAZEL_USER_ROOT" \
             build \
             --configurationPath="build-system/appstore-configuration.json" \
             --codesigningInformationPath=build-system/fake-codesigning \
+            --disableProvisioningProfiles \
+            --disableExtensions \
             --configuration=release_arm64 \
             --buildNumber="$BUILD_NUMBER"
 
@@ -107,6 +110,8 @@ jobs:
             cp -R bazel-out/applebin_ios-ios_arm*-opt-ST-*/bin/Telegram/*.dSYM build/DSYMs/ 2>/dev/null || true
           fi
           zip -r "./$OUTPUT_PATH/Telegram.DSYMs.zip" build/DSYMs 1>/dev/null
+
+
       - name: Create Release and Upload Assets
         uses: softprops/action-gh-release@v2
         with:
