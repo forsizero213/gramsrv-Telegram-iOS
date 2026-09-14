@@ -76,22 +76,13 @@ jobs:
           echo "BUILD_NUMBER=$(echo $BUILD_NUMBER)" >> $GITHUB_ENV
           echo "APP_VERSION=$(echo $APP_VERSION)" >> $GITHUB_ENV
 
-          # Bypass certificate checks completely
-          cat << 'EOF' > build-system/Make/ImportCertificates.py
-          def verify_certificates(*args, **kwargs):
-              return True
-
-          def import_certificates(*args, **kwargs):
-              return True
-          EOF
-
-          # Build using fake-codesigning folder and --disableProvisioningProfiles flag
+          # Direct clean build using Telegram's default options
           python3 -u build-system/Make/Make.py \
             --bazelUserRoot="$BAZEL_USER_ROOT" \
             build \
             --configurationPath="build-system/appstore-configuration.json" \
             --codesigningInformationPath="build-system/fake-codesigning" \
-            --disableProvisioningProfiles \
+            --isProvisioningProfileOptional \
             --configuration=release_arm64 \
             --buildNumber="$BUILD_NUMBER"
 
