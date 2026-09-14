@@ -43,10 +43,10 @@ jobs:
           cd /Users/Shared/telegram-ios
           cat << 'EOF' > build-system/appstore-configuration.json
           {
-            "bundle_id": "app.capricorn1136.rose5722",
+            "bundle_id": "ph.telegra.Telegraph",
             "api_id": "34064276",
             "api_hash": "79d1eeba6d4521f29a81dc40db4ec79a",
-            "team_id": "Z72UR7V57D",
+            "team_id": "C67CF9S4VU",
             "app_center_id": "0",
             "is_internal_build": "false",
             "is_appstore_build": "true",
@@ -57,55 +57,6 @@ jobs:
             "enable_icloud": false
           }
           EOF
-
-      - name: Patch Make.py to not fail hard when aps-environment can't be resolved
-        run: |
-          set -x
-          cd /Users/Shared/telegram-ios
-          python3 - << 'PYEOF'
-          path = "build-system/Make/Make.py"
-          with open(path) as f:
-              lines = f.readlines()
-
-          target_idx = None
-          for i, line in enumerate(lines):
-              if "codesigning_data.aps_environment is None:" in line:
-                  target_idx = i
-                  break
-
-          if target_idx is None:
-              raise SystemExit("Could not find 'codesigning_data.aps_environment is None' check - source may have changed")
-
-          # find the sys.exit(1) within the next few lines and replace the
-          # print+exit block with a non-fatal fallback that rebuilds
-          # codesigning_data with an empty aps_environment, matching the
-          # same pattern XcodeManagedCodesigningSource already uses.
-          exit_idx = None
-          for j in range(target_idx, min(target_idx + 5, len(lines))):
-              if "sys.exit(1)" in lines[j]:
-                  exit_idx = j
-                  break
-
-          if exit_idx is None:
-              raise SystemExit("Could not find sys.exit(1) near the aps_environment check - source may have changed")
-
-          indent = lines[target_idx][:len(lines[target_idx]) - len(lines[target_idx].lstrip())]
-          body_indent = lines[exit_idx][:len(lines[exit_idx]) - len(lines[exit_idx].lstrip())]
-
-          print_idx = exit_idx - 1  # the print(...) line right before sys.exit(1)
-          new_print = body_indent + "print('Could not resolve aps-environment from provisioning profiles, continuing without push')\n"
-          new_reassign = body_indent + "codesigning_data = ResolvedCodesigningData(aps_environment=\"\", use_xcode_managed_codesigning=codesigning_data.use_xcode_managed_codesigning)\n"
-
-          lines[print_idx] = new_print
-          lines[exit_idx] = new_reassign
-
-          with open(path, "w") as f:
-              f.writelines(lines)
-          print("Patched Make.py successfully")
-          PYEOF
-
-          echo "=== verifying patch ==="
-          grep -n -B2 -A2 "codesigning_data.aps_environment is None" build-system/Make/Make.py
 
       - name: Build the App for KSign
         run: |
